@@ -210,6 +210,29 @@ For fully machine-friendly output, use `--json` (`-j`) which emits structured JS
 domain-probe -j stripe.com | jq '.summary.grade'
 ```
 
+## Building Linux Binaries with Docker
+
+Linux release binaries are built inside Docker containers using `Dockerfile.test`. This multi-stage Dockerfile defines base images for Arch Linux, Debian, and Ubuntu — each installs Rust via rustup, copies the source tree, and runs `cargo build --release` followed by a smoke test (`--help` and a live probe).
+
+```bash
+# Build for a specific distro and platform
+docker build --build-arg DISTRO=debian --platform linux/amd64 \
+  -t domain-probe-test:debian-amd64 -f Dockerfile.test .
+
+docker build --build-arg DISTRO=archlinux --platform linux/amd64 \
+  -t domain-probe-test:archlinux-amd64 -f Dockerfile.test .
+```
+
+To extract the compiled binary from a container:
+
+```bash
+docker create --name dp-extract domain-probe-test:debian-amd64 true
+docker cp dp-extract:/src/target/release/domain-probe ./domain-probe
+docker rm dp-extract
+```
+
+The binaries use rustls (no OpenSSL dependency), so a single binary per architecture works across all Linux distros. On an Apple Silicon Mac, Docker Desktop's QEMU emulation handles `--platform linux/amd64` builds transparently — no cross-compilation toolchain needed.
+
 ## Packaging
 
 Distribution packaging metadata lives on dedicated orphan branches, separate from the source code on `main`:
