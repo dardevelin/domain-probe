@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use rustls::ClientConfig;
 use rustls_pki_types::ServerName;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpStream;
@@ -14,7 +15,7 @@ pub(crate) struct TlsProbe {
     pub protocol_version: String,
     pub cipher_suite: String,
     pub certificate_chain: Vec<CertInfo>,
-    pub elapsed_ms: u128,
+    pub elapsed_ms: u64,
 }
 
 #[derive(Debug)]
@@ -46,7 +47,7 @@ pub(crate) async fn probe_tls(host: &str, timeout_secs: u64) -> Result<TlsProbe>
 
     let addr = format!("{host}:443");
     let tcp = tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_secs.max(1).min(8)),
+        std::time::Duration::from_secs(timeout_secs.clamp(1, 8)),
         TcpStream::connect(&addr),
     )
     .await
@@ -77,8 +78,9 @@ pub(crate) async fn probe_tls(host: &str, timeout_secs: u64) -> Result<TlsProbe>
         .map(|cs| format!("{:?}", cs.suite()))
         .unwrap_or_else(|| "unknown".to_string());
 
-    let mut certificate_chain = Vec::new();
-    if let Some(certs) = conn.peer_certificates() {
+    let certs_slice = conn.peer_certificates();
+    let mut certificate_chain = Vec::with_capacity(certs_slice.map(|c| c.len()).unwrap_or(0));
+    if let Some(certs) = certs_slice {
         for (idx, cert_der) in certs.iter().enumerate() {
             let is_leaf = idx == 0;
             match X509Certificate::from_der(cert_der.as_ref()) {
@@ -107,8 +109,25 @@ pub(crate) async fn probe_tls(host: &str, timeout_secs: u64) -> Result<TlsProbe>
                         for name in &ext.value.general_names {
                             match name {
                                 GeneralName::DNSName(dns) => san.push(dns.to_string()),
-                                GeneralName::IPAddress(ip) => {
-                                    san.push(format!("{:?}", ip));
+                                GeneralName::IPAddress(bytes) => {
+                                    let formatted = match bytes.len() {
+                                        4 => {
+                                            if let Ok(octets) = <[u8; 4]>::try_from(*bytes) {
+                                                IpAddr::from(octets).to_string()
+                                            } else {
+                                                format!("IP:{:02x?}", bytes)
+                                            }
+                                        }
+                                        16 => {
+                                            if let Ok(octets) = <[u8; 16]>::try_from(*bytes) {
+                                                IpAddr::from(octets).to_string()
+                                            } else {
+                                                format!("IP:{:02x?}", bytes)
+                                            }
+                                        }
+                                        _ => format!("IP:{:02x?}", bytes),
+                                    };
+                                    san.push(formatted);
                                 }
                                 _ => {}
                             }
@@ -142,7 +161,7 @@ pub(crate) async fn probe_tls(host: &str, timeout_secs: u64) -> Result<TlsProbe>
         protocol_version,
         cipher_suite,
         certificate_chain,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
     })
 }
 

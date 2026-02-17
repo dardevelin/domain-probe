@@ -13,6 +13,7 @@ use crate::probe::tls::TlsProbe;
 use crate::render::report::{http_version, paint_status, format_duration};
 use crate::style::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_quick(
     _target: &Url,
     host: &str,
@@ -23,7 +24,7 @@ pub(crate) fn render_quick(
     tls_result: &Result<TlsProbe>,
     security_headers: Option<&SecurityHeadersProbe>,
     tech_result: Option<&TechProbe>,
-    total_elapsed_ms: u128,
+    total_elapsed_ms: u64,
 ) {
     let status = match http_result {
         Ok(http) => paint_status(http.status),
@@ -56,10 +57,10 @@ pub(crate) fn render_quick(
         total_elapsed_ms,
     );
     // Design: grade in bold purple per quick mode spec
-    let grade_colored = match grade_result.grade.as_str() {
-        "A+" | "A" => c_bold_purple(&grade_result.grade),
-        "B" => c_bold_yellow(&grade_result.grade),
-        _ => c_bold_red(&grade_result.grade),
+    let grade_colored = match grade_result.grade {
+        "A+" | "A" => c_bold_purple(grade_result.grade),
+        "B" => c_bold_yellow(grade_result.grade),
+        _ => c_bold_red(grade_result.grade),
     };
 
     // Line 1: domain in fg-bright bold
@@ -79,18 +80,16 @@ pub(crate) fn render_quick(
     let mut details = Vec::new();
 
     // IP
-    if let Ok(dns) = dns_result {
-        if let Some(ip) = dns.ipv4.first().or(dns.ipv6.first()) {
+    if let Ok(dns) = dns_result
+        && let Some(ip) = dns.ipv4.first().or(dns.ipv6.first()) {
             details.push(ip.clone());
         }
-    }
 
     // Tech
-    if let Some(tech) = tech_result {
-        if let Some(first) = tech.technologies.first() {
-            details.push(first.name.clone());
+    if let Some(tech) = tech_result
+        && let Some(first) = tech.technologies.first() {
+            details.push(first.name.to_string());
         }
-    }
 
     // HSTS check
     if let Some(sh) = security_headers {
@@ -98,31 +97,30 @@ pub(crate) fn render_quick(
             c.name.contains("Strict-Transport") && c.status == HeaderStatus::Pass
         });
         details.push(if hsts_pass {
-            format!("HSTS \u{2713}")
+            "HSTS \u{2713}".to_string()
         } else {
-            format!("HSTS \u{2717}")
+            "HSTS \u{2717}".to_string()
         });
 
         let csp_pass = sh.checks.iter().any(|c| {
             c.name.contains("Content-Security") && c.status == HeaderStatus::Pass
         });
         details.push(if csp_pass {
-            format!("CSP \u{2713}")
+            "CSP \u{2713}".to_string()
         } else {
-            format!("CSP \u{2717}")
+            "CSP \u{2717}".to_string()
         });
     }
 
     // Cert expiry
     if let Ok(tls) = tls_result {
-        if let Some(leaf) = tls.certificate_chain.first() {
-            if let Some(not_after) = leaf.not_after {
+        if let Some(leaf) = tls.certificate_chain.first()
+            && let Some(not_after) = leaf.not_after {
                 let days = not_after.signed_duration_since(Utc::now()).num_days();
                 details.push(format!("Cert {days}d"));
             }
-        }
-    } else if let Ok(rdap) = rdap_result {
-        if let Some(exp) = rdap.expires_on {
+    } else if let Ok(rdap) = rdap_result
+        && let Some(exp) = rdap.expires_on {
             let delta = exp.signed_duration_since(Utc::now());
             if delta.num_seconds() >= 0 {
                 details.push(format!("expires in {}", format_duration(delta)));
@@ -130,7 +128,6 @@ pub(crate) fn render_quick(
                 details.push(format!("expired {}", format_duration(delta)));
             }
         }
-    }
 
     println!("  {}", c_muted(details.join(" \u{00B7} ")));
 }

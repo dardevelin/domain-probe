@@ -7,6 +7,7 @@ use url::Url;
 use std::time::Instant;
 
 const RDAP_BOOTSTRAP_URL: &str = "https://data.iana.org/rdap/dns.json";
+const MAX_RDAP_RESPONSE_BYTES: usize = 2 * 1024 * 1024; // 2 MB
 
 #[derive(Debug)]
 pub(crate) struct RdapProbe {
@@ -20,7 +21,7 @@ pub(crate) struct RdapProbe {
     pub registrant_contact_uri: Option<String>,
     pub abuse_email: Option<String>,
     pub abuse_phone: Option<String>,
-    pub elapsed_ms: u128,
+    pub elapsed_ms: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,15 +86,20 @@ pub(crate) async fn probe_rdap(client: &Client, domain: &str) -> Result<RdapProb
         .ok_or_else(|| anyhow!("domain `{domain}` has no TLD"))?
         .to_ascii_lowercase();
 
-    let bootstrap = client
+    let bootstrap_bytes = client
         .get(RDAP_BOOTSTRAP_URL)
         .send()
         .await
         .context("failed to fetch RDAP bootstrap")?
         .error_for_status()
         .context("RDAP bootstrap returned non-success")?
-        .json::<RdapBootstrap>()
+        .bytes()
         .await
+        .context("failed to read RDAP bootstrap body")?;
+    if bootstrap_bytes.len() > MAX_RDAP_RESPONSE_BYTES {
+        return Err(anyhow!("RDAP bootstrap response too large ({} bytes)", bootstrap_bytes.len()));
+    }
+    let bootstrap: RdapBootstrap = serde_json::from_slice(&bootstrap_bytes)
         .context("failed to parse RDAP bootstrap JSON")?;
 
     let rdap_base = bootstrap
@@ -110,15 +116,20 @@ pub(crate) async fn probe_rdap(client: &Client, domain: &str) -> Result<RdapProb
 
     let rdap_url = build_rdap_domain_url(&rdap_base, domain)?;
 
-    let rdap_domain = client
+    let rdap_domain_bytes = client
         .get(&rdap_url)
         .send()
         .await
         .with_context(|| format!("failed to fetch RDAP domain record from {rdap_url}"))?
         .error_for_status()
         .context("RDAP domain endpoint returned non-success")?
-        .json::<RdapDomain>()
+        .bytes()
         .await
+        .context("failed to read RDAP domain body")?;
+    if rdap_domain_bytes.len() > MAX_RDAP_RESPONSE_BYTES {
+        return Err(anyhow!("RDAP domain response too large ({} bytes)", rdap_domain_bytes.len()));
+    }
+    let rdap_domain: RdapDomain = serde_json::from_slice(&rdap_domain_bytes)
         .context("failed to parse RDAP domain JSON")?;
 
     let events = rdap_domain.events.as_deref().unwrap_or(&[]);
@@ -169,7 +180,7 @@ pub(crate) async fn probe_rdap(client: &Client, domain: &str) -> Result<RdapProb
         registrant_contact_uri: entity_fields.registrant_contact_uri,
         abuse_email: entity_fields.abuse_email,
         abuse_phone: entity_fields.abuse_phone,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
     })
 }
 
@@ -316,13 +327,20 @@ fn extract_entity_fields_from_value(root: &Value) -> RdapEntityFields {
 }
 
 fn flatten_entity_values<'a>(entities: &'a [Value], out: &mut Vec<&'a Value>) {
+    flatten_entity_values_bounded(entities, out, 0);
+}
+
+fn flatten_entity_values_bounded<'a>(entities: &'a [Value], out: &mut Vec<&'a Value>, depth: usize) {
+    if depth > 5 {
+        return;
+    }
     for entity in entities {
         if !entity.is_object() {
             continue;
         }
         out.push(entity);
         if let Some(children) = entity.get("entities").and_then(Value::as_array) {
-            flatten_entity_values(children, out);
+            flatten_entity_values_bounded(children, out, depth + 1);
         }
     }
 }
@@ -367,10 +385,17 @@ fn entity_iana_id(entity: &Value) -> Option<String> {
 }
 
 fn flatten_entities<'a>(entities: &'a [RdapEntity], out: &mut Vec<&'a RdapEntity>) {
+    flatten_entities_bounded(entities, out, 0);
+}
+
+fn flatten_entities_bounded<'a>(entities: &'a [RdapEntity], out: &mut Vec<&'a RdapEntity>, depth: usize) {
+    if depth > 5 {
+        return;
+    }
     for entity in entities {
         out.push(entity);
         if let Some(children) = entity.entities.as_deref() {
-            flatten_entities(children, out);
+            flatten_entities_bounded(children, out, depth + 1);
         }
     }
 }

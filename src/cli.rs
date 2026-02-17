@@ -70,7 +70,15 @@ pub(crate) fn parse_target_url(input: &str) -> Result<Url> {
     if parsed.host_str().is_none() {
         return Err(anyhow!("unable to parse a hostname from input"));
     }
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => return Err(anyhow!("unsupported scheme \"{scheme}\" — only http and https are allowed")),
+    }
     Ok(parsed)
+}
+
+pub(crate) fn should_show(selected: &HashSet<SectionName>, section: SectionName) -> bool {
+    selected.is_empty() || selected.contains(&section)
 }
 
 pub(crate) fn parse_sections(raw_sections: &[String]) -> Result<HashSet<SectionName>> {

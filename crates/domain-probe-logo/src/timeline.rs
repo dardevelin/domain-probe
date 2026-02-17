@@ -84,9 +84,8 @@ impl StepEnd {
             Self::Timed(d) => elapsed >= *d,
             Self::Signal { signal, max } => {
                 if signal.is_fired() { return true; }
-                if let Some(m) = max {
-                    if elapsed >= *m { return true; }
-                }
+                if let Some(m) = max
+                    && elapsed >= *m { return true; }
                 false
             }
         }
@@ -264,7 +263,7 @@ impl Timeline {
 /// Draw a set of lines into the reserved vertical space.
 fn draw_frame(stdout: &mut io::Stdout, height: u16, lines: &[String]) {
     queue!(stdout, cursor::MoveUp(height)).ok();
-    for (_i, line) in lines.iter().enumerate() {
+    for line in lines.iter() {
         queue!(stdout, terminal::Clear(terminal::ClearType::CurrentLine)).ok();
         writeln!(stdout, "{}", line).ok();
     }

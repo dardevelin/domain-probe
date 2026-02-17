@@ -86,8 +86,8 @@ pub(crate) fn render_http_section(
         Ok(http) => {
             let status_label = paint_status(http.status);
             row("HTTP", format!("{status_label} ({})", http_version(http.version)));
-            row("Server", http.server.as_deref().unwrap_or("unknown"));
-            row("Content-Type", http.content_type.as_deref().unwrap_or("unknown"));
+            row("Server", sanitize(http.server.as_deref().unwrap_or("unknown")));
+            row("Content-Type", sanitize(http.content_type.as_deref().unwrap_or("unknown")));
             row(
                 "Content-Length",
                 http.content_length
@@ -142,19 +142,20 @@ pub(crate) fn render_tls_section(
                         ""
                     };
 
-                    let name = if cert.subject.is_empty() {
+                    let raw_name = if cert.subject.is_empty() {
                         &cert.issuer
                     } else {
                         &cert.subject
                     };
+                    let name = sanitize(raw_name);
 
                     // Design: leaf=cyan, intermediate=fg, root=fg-muted
                     let name_colored = if cert.is_leaf {
-                        c_cyan(name)
+                        c_cyan(&name)
                     } else if idx == chain_len - 1 {
-                        c_muted(name)
+                        c_muted(&name)
                     } else {
-                        c_fg(name)
+                        c_fg(&name)
                     };
 
                     let label_str = if label.is_empty() {
@@ -191,15 +192,15 @@ pub(crate) fn render_tls_section(
                         row("Expires", expiry_text);
                     }
                     if !leaf.san.is_empty() {
-                        let display_san: Vec<_> = leaf.san.iter().take(5).collect();
+                        let display_san: Vec<_> = leaf.san.iter().take(5).map(|s| sanitize(s)).collect();
                         let san_text = if leaf.san.len() > 5 {
                             format!(
                                 "{} (+{} more)",
-                                display_san.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                                display_san.join(", "),
                                 leaf.san.len() - 5
                             )
                         } else {
-                            display_san.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                            display_san.join(", ")
                         };
                         row("SANs", san_text);
                     }
@@ -238,7 +239,7 @@ pub(crate) fn render_headers_section(
                 println!(
                     "  {:<4}  {:<30} {}",
                     badge,
-                    c_fg(&check.name),
+                    c_fg(check.name),
                     c_muted(&check.value)
                 );
             }
@@ -267,7 +268,7 @@ pub(crate) fn render_redirects_section(
             if redirect.hops.is_empty() {
                 let status = redirect
                     .final_status
-                    .map(|s| paint_status(s))
+                    .map(paint_status)
                     .unwrap_or_else(|| "unknown".to_string());
                 println!(
                     "  {} {} ({})",
@@ -355,8 +356,8 @@ pub(crate) fn render_dns_section(
                 render_dns_single_column(dns);
             }
 
-            if let Some(http) = http_result {
-                if http
+            if let Some(http) = http_result
+                && http
                     .server
                     .as_deref()
                     .map(|s| s.to_ascii_lowercase().contains("cloudflare"))
@@ -365,7 +366,6 @@ pub(crate) fn render_dns_section(
                     println!();
                     row("Note", c_muted("Cloudflare anycast edge IPs can vary by client location"));
                 }
-            }
             if verbose {
                 row("DNS Probe Time", format!("{} ms", dns.elapsed_ms));
             }
@@ -387,12 +387,7 @@ fn render_dns_single_column(dns: &DnsProbe) {
     }
 
     for txt in &dns.txt {
-        let display_txt = if txt.len() > 80 {
-            format!("{}...", &txt[..80])
-        } else {
-            txt.clone()
-        };
-        row_type("TXT", display_txt);
+        row_type("TXT", truncate_str(&sanitize(txt), 83));
     }
 
     for caa in &dns.caa {
@@ -435,11 +430,7 @@ fn render_dns_two_columns(dns: &DnsProbe, tw: usize) {
     for i in 0..max_rows {
         let left = if i < left_rows.len() {
             let (ref rtype, ref val) = left_rows[i];
-            let truncated_val = if val.len() > val_max {
-                format!("{}...", &val[..val_max.saturating_sub(3)])
-            } else {
-                val.clone()
-            };
+            let truncated_val = truncate_str(val, val_max);
             let type_col = pad_visible(&c_bold_purple(rtype), type_width, '<');
             let content = format!("{}{}", type_col, truncated_val);
             pad_visible(&content, col_width, '<')
@@ -449,11 +440,7 @@ fn render_dns_two_columns(dns: &DnsProbe, tw: usize) {
 
         let right = if i < right_rows.len() {
             let (ref rtype, ref val) = right_rows[i];
-            let truncated_val = if val.len() > val_max {
-                format!("{}...", &val[..val_max.saturating_sub(3)])
-            } else {
-                val.clone()
-            };
+            let truncated_val = truncate_str(val, val_max);
             let type_col = pad_visible(&c_bold_purple(rtype), type_width, '<');
             format!("{}{}", type_col, truncated_val)
         } else {
@@ -497,14 +484,14 @@ pub(crate) fn render_tech_section(
                 } else {
                     format!("[{}]", tag.trim())
                 };
-                if line.len() + tag.len() + 4 > terminal_width() {
+                if visible_len(&line) + visible_len(&tag_display) + 1 > terminal_width() {
                     println!("{}", line);
                     line = String::from("  ");
                 }
                 line.push_str(&tag_display);
                 line.push(' ');
             }
-            if line.trim().len() > 0 {
+            if !line.trim().is_empty() {
                 println!("{}", line);
             }
         }
@@ -528,8 +515,8 @@ pub(crate) fn render_whois_section(
     match rdap_result {
         Ok(rdap) => {
             let registrar = match (&rdap.registrar, &rdap.registrar_iana_id) {
-                (Some(name), Some(id)) => format!("{name} (IANA Registrar ID: {id})"),
-                (Some(name), None) => name.to_string(),
+                (Some(name), Some(id)) => format!("{} (IANA Registrar ID: {})", sanitize(name), sanitize(id)),
+                (Some(name), None) => sanitize(name),
                 _ => "unknown".to_string(),
             };
             row("Registrar", registrar);
@@ -563,26 +550,28 @@ pub(crate) fn render_whois_section(
             }
 
             if !rdap.status_codes.is_empty() {
-                row("Domain Status", rdap.status_codes.join(", "));
+                let sanitized_codes: Vec<_> = rdap.status_codes.iter().map(|s| sanitize(s)).collect();
+                row("Domain Status", sanitized_codes.join(", "));
             }
 
             if let Some(name) = &rdap.registrant_name {
+                let clean = sanitize(name);
                 let display = if name.eq_ignore_ascii_case("data redacted") {
-                    c_yellow(name)
+                    c_yellow(&clean)
                 } else {
-                    name.to_string()
+                    clean
                 };
                 row("Registrant", display);
             }
 
             if let Some(contact_uri) = &rdap.registrant_contact_uri {
-                row("Contact URL", contact_uri);
+                row("Contact URL", sanitize(contact_uri));
             }
 
             match (&rdap.abuse_email, &rdap.abuse_phone) {
-                (Some(email), Some(phone)) => row("Abuse Contact", format!("{email} | {phone}")),
-                (Some(email), None) => row("Abuse Contact", email),
-                (None, Some(phone)) => row("Abuse Contact", phone),
+                (Some(email), Some(phone)) => row("Abuse Contact", format!("{} | {}", sanitize(email), sanitize(phone))),
+                (Some(email), None) => row("Abuse Contact", sanitize(email)),
+                (None, Some(phone)) => row("Abuse Contact", sanitize(phone)),
                 (None, None) => {}
             }
 
@@ -595,6 +584,7 @@ pub(crate) fn render_whois_section(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_perf_section(
     http_result: &Result<HttpProbe>,
     redirect_result: &Result<RedirectProbe>,
@@ -602,7 +592,7 @@ pub(crate) fn render_perf_section(
     tls_result: &Result<TlsProbe>,
     rdap_result: &Result<RdapProbe>,
     selected_sections: &HashSet<SectionName>,
-    total_elapsed_ms: u128,
+    total_elapsed_ms: u64,
     verbose: bool,
 ) {
     if !should_show(selected_sections, SectionName::Performance) {
@@ -613,7 +603,7 @@ pub(crate) fn render_perf_section(
         println!("  {}", c_dim("Wall-clock time per probe. Probes run in parallel by default; use --sequential for isolated timings."));
     }
 
-    let mut entries: Vec<(&str, u128)> = Vec::new();
+    let mut entries: Vec<(&str, u64)> = Vec::new();
     if let Ok(http) = http_result {
         entries.push(("HTTP", http.elapsed_ms));
     }
@@ -646,7 +636,7 @@ pub(crate) fn render_perf_section(
     println!("  {}{} ms", label_col, num_col);
 }
 
-fn row_perf(label: &str, ms: u128, max_ms: u128) {
+fn row_perf(label: &str, ms: u64, max_ms: u64) {
     let label_col = pad_visible(&c_muted(label), 20, '<');
     let num_col = pad_visible(&c_fg(ms), 6, '>');
     let bar_width = 20;
@@ -661,6 +651,7 @@ fn row_perf(label: &str, ms: u128, max_ms: u128) {
     println!("  {}{} ms  {}", label_col, num_col, bar);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_summary_section(
     http_result: &Result<HttpProbe>,
     redirect_result: &Result<RedirectProbe>,
@@ -669,7 +660,7 @@ pub(crate) fn render_summary_section(
     tls_result: &Result<TlsProbe>,
     security_headers: Option<&SecurityHeadersProbe>,
     selected_sections: &HashSet<SectionName>,
-    total_elapsed_ms: u128,
+    total_elapsed_ms: u64,
     verbose: bool,
 ) {
     if !should_show(selected_sections, SectionName::Summary) {
@@ -705,11 +696,11 @@ pub(crate) fn render_summary_section(
     println!("  {}{}{}", c_dim("\u{256D}"), c_dim(&border_line), c_dim("\u{256E}"));
 
     // Grade letter (large, colored)
-    let grade_label = match grade_result.grade.as_str() {
-        "A+" | "A" => c_bold_green(&grade_result.grade),
-        "B" => c_bold_yellow(&grade_result.grade),
-        "C" => c_bold_orange(&grade_result.grade),
-        _ => c_bold_red(&grade_result.grade),
+    let grade_label = match grade_result.grade {
+        "A+" | "A" => c_bold_green(grade_result.grade),
+        "B" => c_bold_yellow(grade_result.grade),
+        "C" => c_bold_orange(grade_result.grade),
+        _ => c_bold_red(grade_result.grade),
     };
 
     // ANSI-aware padding for grade and overall labels
@@ -786,9 +777,7 @@ pub(crate) fn render_methodology_section(verbose: bool, is_sequential: bool) {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
-fn should_show(selected_sections: &HashSet<SectionName>, section: SectionName) -> bool {
-    selected_sections.is_empty() || selected_sections.contains(&section)
-}
+use crate::cli::should_show;
 
 pub(crate) fn http_version(version: Version) -> &'static str {
     match version {
@@ -829,7 +818,7 @@ fn format_redirect_summary(
         );
     }
     let status = final_status
-        .map(|s| paint_status(s))
+        .map(paint_status)
         .unwrap_or_else(|| "unknown".to_string());
     format!(
         "{} ({} hops, final: {}, status: {status})",

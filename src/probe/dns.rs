@@ -1,4 +1,6 @@
 use anyhow::{Context, Result, anyhow};
+
+const MAX_DOH_RESPONSE_BYTES: usize = 64 * 1024; // 64 KB
 use hickory_resolver::TokioResolver;
 use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig, ResolverOpts};
 use hickory_resolver::proto::rr::RecordType;
@@ -21,7 +23,7 @@ pub(crate) struct DnsProbe {
     pub ns: Vec<String>,
     pub txt: Vec<String>,
     pub caa: Vec<String>,
-    pub elapsed_ms: u128,
+    pub elapsed_ms: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,14 +174,13 @@ pub(crate) async fn probe_dns(host: &str, client: &Client, doh_url: &str) -> Res
     if let Some(doh_records) = mx_fb {
         for entry in doh_records {
             let parts: Vec<&str> = entry.splitn(2, ' ').collect();
-            if parts.len() == 2 {
-                if let Ok(pri) = parts[0].parse::<u16>() {
+            if parts.len() == 2
+                && let Ok(pri) = parts[0].parse::<u16>() {
                     mx.push(MxRecord {
                         priority: pri,
                         exchange: parts[1].trim_end_matches('.').to_string(),
                     });
                 }
-            }
         }
     }
     if let Some(doh_records) = ns_fb {
@@ -207,12 +208,12 @@ pub(crate) async fn probe_dns(host: &str, client: &Client, doh_url: &str) -> Res
         ns: ns.into_iter().collect(),
         txt,
         caa,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
     })
 }
 
 pub(crate) async fn probe_doh(client: &Client, host: &str, record_type: &str, doh_url: &str) -> Result<Vec<String>> {
-    let response = client
+    let doh_bytes = client
         .get(doh_url)
         .query(&[("name", host), ("type", record_type)])
         .send()
@@ -220,8 +221,13 @@ pub(crate) async fn probe_doh(client: &Client, host: &str, record_type: &str, do
         .with_context(|| format!("DoH request failed for {record_type} {host}"))?
         .error_for_status()
         .with_context(|| format!("DoH endpoint returned non-success for {record_type} {host}"))?
-        .json::<DohResponse>()
+        .bytes()
         .await
+        .context("failed to read DoH response body")?;
+    if doh_bytes.len() > MAX_DOH_RESPONSE_BYTES {
+        return Err(anyhow!("DoH response too large ({} bytes)", doh_bytes.len()));
+    }
+    let response: DohResponse = serde_json::from_slice(&doh_bytes)
         .context("failed to parse DoH JSON response")?;
 
     let mut records = Vec::new();

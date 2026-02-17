@@ -11,7 +11,7 @@ use anyhow::Result;
 
 #[derive(Debug)]
 pub(crate) struct GradeResult {
-    pub grade: String,
+    pub grade: &'static str,
     pub overall_score: u32,
     pub tls_score: u32,
     pub headers_score: u32,
@@ -20,6 +20,7 @@ pub(crate) struct GradeResult {
     pub perf_score: u32,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_grade(
     now: DateTime<Utc>,
     http_result: &Result<HttpProbe>,
@@ -28,7 +29,7 @@ pub(crate) fn compute_grade(
     dns_result: &Result<DnsProbe>,
     tls_result: &Result<TlsProbe>,
     security_headers: Option<&SecurityHeadersProbe>,
-    total_elapsed_ms: u128,
+    total_elapsed_ms: u64,
 ) -> GradeResult {
     // TLS score (0-10)
     let tls_score = match tls_result {
@@ -112,8 +113,8 @@ pub(crate) fn compute_grade(
                 }
             }
             // Domain registration health
-            if let Ok(rdap) = rdap_result {
-                if let Some(exp) = rdap.expires_on {
+            if let Ok(rdap) = rdap_result
+                && let Some(exp) = rdap.expires_on {
                     let days = exp.signed_duration_since(now).num_days();
                     if days < 0 {
                         // expired - already penalized
@@ -123,7 +124,6 @@ pub(crate) fn compute_grade(
                         s += 1;
                     }
                 }
-            }
             s.min(10)
         }
         Err(_) => 0,
@@ -170,8 +170,7 @@ pub(crate) fn compute_grade(
         "D"
     } else {
         "F"
-    }
-    .to_string();
+    };
 
     GradeResult {
         grade,

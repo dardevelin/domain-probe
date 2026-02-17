@@ -103,7 +103,11 @@ pub(crate) fn load_config() -> Config {
 
     match std::fs::read_to_string(&path) {
         Ok(contents) => match toml::from_str::<Config>(&contents) {
-            Ok(config) => config,
+            Ok(mut config) => {
+                config.network.timeout = config.network.timeout.clamp(1, 120);
+                config.network.max_redirect_hops = config.network.max_redirect_hops.clamp(1, 30);
+                config
+            }
             Err(err) => {
                 eprintln!(
                     "warning: failed to parse {}: {err}; using defaults",
@@ -123,6 +127,9 @@ pub(crate) fn load_config() -> Config {
 }
 
 pub(crate) fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
+    if !hex.is_ascii() {
+        return None;
+    }
     let hex = hex.trim_start_matches('#');
     if hex.len() != 6 {
         return None;

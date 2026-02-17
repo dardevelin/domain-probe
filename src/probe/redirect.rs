@@ -18,7 +18,7 @@ pub(crate) struct RedirectProbe {
     pub final_url: Url,
     pub final_status: Option<StatusCode>,
     pub truncated: bool,
-    pub elapsed_ms: u128,
+    pub elapsed_ms: u64,
 }
 
 pub(crate) async fn probe_redirect_chain(
@@ -41,7 +41,7 @@ pub(crate) async fn probe_redirect_chain(
                 final_url: current,
                 final_status,
                 truncated: false,
-                elapsed_ms: started.elapsed().as_millis(),
+                elapsed_ms: started.elapsed().as_millis() as u64,
             });
         }
 
@@ -56,6 +56,10 @@ pub(crate) async fn probe_redirect_chain(
             .or_else(|_| Url::parse(location))
             .with_context(|| format!("invalid redirect target `{location}`"))?;
 
+        if next.scheme() != "http" && next.scheme() != "https" {
+            break;
+        }
+
         hops.push(RedirectHop {
             status,
             from: current.clone(),
@@ -69,6 +73,6 @@ pub(crate) async fn probe_redirect_chain(
         final_url: current,
         final_status,
         truncated: true,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
     })
 }

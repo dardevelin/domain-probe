@@ -90,21 +90,25 @@ pub(crate) fn c_red<T: std::fmt::Display>(value: T) -> String {
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_purple<T: std::fmt::Display>(value: T) -> String {
     let c = pal(4);
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_orange<T: std::fmt::Display>(value: T) -> String {
     let c = pal(5);
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_pink<T: std::fmt::Display>(value: T) -> String {
     let c = pal(6);
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_teal<T: std::fmt::Display>(value: T) -> String {
     let c = pal(7);
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
@@ -125,6 +129,7 @@ pub(crate) fn c_dim<T: std::fmt::Display>(value: T) -> String {
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_bright<T: std::fmt::Display>(value: T) -> String {
     let c = pal(11);
     style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
@@ -150,6 +155,7 @@ pub(crate) fn c_bold_bright<T: std::fmt::Display>(value: T) -> String {
     style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
+#[allow(dead_code)]
 pub(crate) fn c_bold_cyan<T: std::fmt::Display>(value: T) -> String {
     let c = pal(1);
     style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
@@ -223,14 +229,15 @@ pub(crate) fn score_bar(score: u32, max: u32) -> String {
 
 pub(crate) fn with_commas(num: u64) -> String {
     let raw = num.to_string();
-    let mut out = String::with_capacity(raw.len() + raw.len() / 3);
-    for (i, ch) in raw.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 {
+    let len = raw.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, ch) in raw.chars().enumerate() {
+        if i > 0 && (len - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
     }
-    out.chars().rev().collect()
+    out
 }
 
 pub(crate) fn make_spinner(msg: &str, no_color: bool) -> ProgressBar {
@@ -303,6 +310,43 @@ pub(crate) fn visible_len(s: &str) -> usize {
         }
     }
     len
+}
+
+/// Truncate a string to `max` bytes, respecting UTF-8 char boundaries.
+/// If truncated, appends "..." so the total visible text ≤ max.
+pub(crate) fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max.saturating_sub(3);
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &s[..end])
+}
+
+/// Strip C0 control chars (except space), C1 controls, and ANSI escape
+/// sequences from server-controlled strings to prevent terminal injection.
+pub(crate) fn sanitize(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_escape = false;
+    for ch in s.chars() {
+        if in_escape {
+            if ch == 'm' || ch == 'H' || ch == 'J' || ch == 'K' || ch == 'A' || ch == 'B' || ch == 'C' || ch == 'D' {
+                in_escape = false;
+            }
+            continue;
+        }
+        if ch == '\x1b' {
+            in_escape = true;
+            continue;
+        }
+        // Allow printable chars and common whitespace (space, tab, newline)
+        if ch == ' ' || ch == '\t' || ch == '\n' || (!ch.is_control() && !('\u{0080}'..='\u{009F}').contains(&ch)) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Pad a string containing ANSI codes to a target *visible* width.

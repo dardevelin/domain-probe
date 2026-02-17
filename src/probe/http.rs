@@ -12,7 +12,7 @@ pub(crate) struct HttpProbe {
     pub content_length: Option<u64>,
     pub server: Option<String>,
     pub headers: HashMap<String, String>,
-    pub elapsed_ms: u128,
+    pub elapsed_ms: u64,
 }
 
 pub(crate) async fn request_metadata(client: &Client, url: &Url) -> Result<reqwest::Response> {
@@ -56,8 +56,8 @@ pub(crate) async fn probe_http(client: &Client, url: &Url) -> Result<HttpProbe> 
             .and_then(parse_content_range_total);
     }
 
-    if content_length.is_none() {
-        if let Ok(range_resp) = client
+    if content_length.is_none()
+        && let Ok(range_resp) = client
             .get(url.clone())
             .header(header::RANGE, "bytes=0-0")
             .send()
@@ -75,7 +75,6 @@ pub(crate) async fn probe_http(client: &Client, url: &Url) -> Result<HttpProbe> 
                         .and_then(parse_content_range_total)
                 });
         }
-    }
 
     if content_length.is_none()
         && let Ok(get_resp) = client
@@ -111,7 +110,7 @@ pub(crate) async fn probe_http(client: &Client, url: &Url) -> Result<HttpProbe> 
         content_length,
         server,
         headers,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
     })
 }
 

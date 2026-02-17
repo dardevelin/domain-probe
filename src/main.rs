@@ -4,14 +4,14 @@ mod config;
 mod grade;
 mod probe;
 mod render;
-#[allow(dead_code)]
 mod style;
 
 use anyhow::{Result, anyhow};
 use clap::Parser;
+use std::collections::HashSet;
 use std::time::Instant;
 
-use cli::{Cli, alt_scheme_url, parse_sections, parse_target_url};
+use cli::{Cli, alt_scheme_url, parse_sections, parse_target_url, should_show};
 use client::{build_data_client, build_probe_client};
 use config::load_config;
 use probe::headers::analyze_security_headers;
@@ -67,34 +67,53 @@ async fn run() -> Result<()> {
     let probe_client = build_probe_client(timeout, &user_agent)?;
     let data_client = build_data_client(timeout, &user_agent)?;
 
+    let ctx = ProbeContext {
+        target,
+        host,
+        alt_url,
+        is_https,
+        probe_client,
+        data_client,
+        selected_sections,
+        max_redirect_hops,
+        doh_url,
+        timeout,
+        animate,
+    };
+
     // For JSON/quick mode: run all probes, collect results, render at end
     if cli.json || cli.quick {
-        return run_batch(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout).await;
+        return run_batch(cli, ctx).await;
     }
 
     // Sequential mode: run probes one at a time
     if cli.sequential {
-        return run_sequential(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout, animate).await;
+        return run_sequential(cli, ctx).await;
     }
 
     // Interactive/streaming mode: render sections as probes complete
-    run_streaming(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout, animate).await
+    run_streaming(cli, ctx).await
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_batch(
-    cli: Cli,
+struct ProbeContext {
     target: url::Url,
     host: String,
     alt_url: Option<url::Url>,
     is_https: bool,
     probe_client: reqwest::Client,
     data_client: reqwest::Client,
-    _selected_sections: std::collections::HashSet<cli::SectionName>,
+    selected_sections: HashSet<cli::SectionName>,
     max_redirect_hops: usize,
-    doh_url: &str,
+    doh_url: String,
     timeout: u64,
-) -> Result<()> {
+    animate: bool,
+}
+
+async fn run_batch(cli: Cli, ctx: ProbeContext) -> Result<()> {
+    let ProbeContext {
+        target, host, alt_url, is_https, probe_client, data_client,
+        selected_sections: _, max_redirect_hops, doh_url, timeout, ..
+    } = ctx;
     let spinner = if cli.json || !is_tty() {
         None
     } else {
@@ -102,17 +121,19 @@ async fn run_batch(
     };
 
     let probe_start = Instant::now();
-    let dns_result = probe_dns(&host, &data_client, doh_url).await;
+    let dns_result = probe_dns(&host, &data_client, &doh_url).await;
 
     if let Some(ref sp) = spinner {
         sp.set_message(format!("Probing {} (TLS, HTTP, RDAP, redirects)...", &host));
     }
 
     let alt_probe_future = async {
-        if let Some(url) = alt_url.clone() {
-            Some((url.clone(), probe_redirect_chain(&probe_client, &url, max_redirect_hops).await))
-        } else {
-            None
+        match alt_url {
+            Some(url) => {
+                let result = probe_redirect_chain(&probe_client, &url, max_redirect_hops).await;
+                Some((url, result))
+            }
+            None => None,
         }
     };
 
@@ -131,7 +152,7 @@ async fn run_batch(
         alt_probe_future,
         tls_future,
     );
-    let total_elapsed_ms = probe_start.elapsed().as_millis();
+    let total_elapsed_ms = probe_start.elapsed().as_millis() as u64;
     if let Some(spinner) = spinner {
         spinner.finish_and_clear();
     }
@@ -158,28 +179,18 @@ async fn run_batch(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_sequential(
-    cli: Cli,
-    target: url::Url,
-    host: String,
-    alt_url: Option<url::Url>,
-    is_https: bool,
-    probe_client: reqwest::Client,
-    data_client: reqwest::Client,
-    selected_sections: std::collections::HashSet<cli::SectionName>,
-    max_redirect_hops: usize,
-    doh_url: &str,
-    timeout: u64,
-    animate: bool,
-) -> Result<()> {
+async fn run_sequential(cli: Cli, ctx: ProbeContext) -> Result<()> {
+    let ProbeContext {
+        target, host, alt_url, is_https, probe_client, data_client,
+        selected_sections, max_redirect_hops, doh_url, timeout, animate,
+    } = ctx;
     let no_color = cli.no_color;
     let verbose = cli.verbose;
 
     let probe_start = Instant::now();
 
     // 1. DNS — run concurrently with the logo animation
-    let dns_result = if should_run(&selected_sections, cli::SectionName::Dns) {
+    let dns_result = if should_show(&selected_sections, cli::SectionName::Dns) {
         if animate && is_tty() && domain_probe_logo::detect::supports_truecolor() {
             // Spin the logo while DNS resolves; fire signal when done
             let signal = domain_probe_logo::timeline::Signal::new();
@@ -194,14 +205,14 @@ async fn run_sequential(
                     result
                 }
             });
-            report::print_banner_animated(signal);
-            let result = dns_handle.await.expect("DNS task panicked");
+            tokio::task::spawn_blocking(move || report::print_banner_animated(signal)).await.ok();
+            let result = dns_handle.await.map_err(|e| anyhow!("DNS probe failed: {e}"))?;
             report::render_dns_section(&result, None, &selected_sections, verbose);
             Some(result)
         } else {
             report::print_banner_static();
             let sp = spin(&format!("DNS: resolving {}...", &host), no_color);
-            let result = probe_dns(&host, &data_client, doh_url).await;
+            let result = probe_dns(&host, &data_client, &doh_url).await;
             sp.finish_and_clear();
             report::render_dns_section(&result, None, &selected_sections, verbose);
             Some(result)
@@ -210,7 +221,7 @@ async fn run_sequential(
         if animate && is_tty() && domain_probe_logo::detect::supports_truecolor() {
             let signal = domain_probe_logo::timeline::Signal::new();
             signal.fire();
-            report::print_banner_animated(signal);
+            tokio::task::spawn_blocking(move || report::print_banner_animated(signal)).await.ok();
         } else {
             report::print_banner_static();
         }
@@ -218,7 +229,7 @@ async fn run_sequential(
     };
 
     // 2. TLS
-    let tls_result = if is_https && should_run(&selected_sections, cli::SectionName::Tls) {
+    let tls_result = if is_https && should_show(&selected_sections, cli::SectionName::Tls) {
         let sp = spin(&format!("TLS: connecting to {}:443...", &host), no_color);
         let result = probe_tls(&host, timeout).await;
         sp.finish_and_clear();
@@ -229,29 +240,36 @@ async fn run_sequential(
     };
 
     // 3. HTTP + headers + tech
-    let http_result = if should_run(&selected_sections, cli::SectionName::Target) {
+    let http_result = if should_show(&selected_sections, cli::SectionName::Target) {
         let sp = spin(&format!("HTTP: HEAD {}...", target.as_str()), no_color);
         let result = probe_http(&probe_client, &target).await;
         sp.finish_and_clear();
         report::render_http_section(&target, &host, &result, &selected_sections, verbose);
-        // Derive headers + tech from HTTP result
-        let security_headers = result.as_ref().ok().map(|http| analyze_security_headers(&http.headers));
-        report::render_headers_section(security_headers.as_ref(), &selected_sections, verbose);
-        let tech = result.as_ref().ok().map(|http| detect_technologies(&http.headers));
-        report::render_tech_section(tech.as_ref(), &selected_sections, verbose);
         Some(result)
     } else {
         None
     };
 
+    // Compute security headers and tech once from HTTP result
+    let security_headers = http_result.as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|http| analyze_security_headers(&http.headers));
+    report::render_headers_section(security_headers.as_ref(), &selected_sections, verbose);
+    let tech = http_result.as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|http| detect_technologies(&http.headers));
+    report::render_tech_section(tech.as_ref(), &selected_sections, verbose);
+
     // 4. Redirects
-    let redirect_result = if should_run(&selected_sections, cli::SectionName::Redirects) {
+    let redirect_result = if should_show(&selected_sections, cli::SectionName::Redirects) {
         let sp = spin(&format!("Redirects: following {}...", target.as_str()), no_color);
         let result = probe_redirect_chain(&probe_client, &target, max_redirect_hops).await;
-        let alt_redirect_result = if let Some(url) = alt_url.clone() {
-            Some((url.clone(), probe_redirect_chain(&probe_client, &url, max_redirect_hops).await))
-        } else {
-            None
+        let alt_redirect_result = match alt_url {
+            Some(url) => {
+                let result = probe_redirect_chain(&probe_client, &url, max_redirect_hops).await;
+                Some((url, result))
+            }
+            None => None,
         };
         sp.finish_and_clear();
         report::render_redirects_section(&result, alt_redirect_result.as_ref(), &selected_sections, verbose);
@@ -261,7 +279,7 @@ async fn run_sequential(
     };
 
     // 5. RDAP
-    let rdap_result = if should_run(&selected_sections, cli::SectionName::Whois) {
+    let rdap_result = if should_show(&selected_sections, cli::SectionName::Whois) {
         let sp = spin(&format!("RDAP: querying registration for {}...", &host), no_color);
         let result = probe_rdap(&data_client, &host).await;
         sp.finish_and_clear();
@@ -271,7 +289,7 @@ async fn run_sequential(
         None
     };
 
-    let total_elapsed_ms = probe_start.elapsed().as_millis();
+    let total_elapsed_ms = probe_start.elapsed().as_millis() as u64;
 
     // Unwrap results for perf + summary
     let http_r = http_result.unwrap_or_else(|| Err(anyhow!("probe not run")));
@@ -279,7 +297,6 @@ async fn run_sequential(
     let dns_r = dns_result.unwrap_or_else(|| Err(anyhow!("probe not run")));
     let tls_r = tls_result.unwrap_or_else(|| Err(anyhow!("probe not run")));
     let rdap_r = rdap_result.unwrap_or_else(|| Err(anyhow!("probe not run")));
-    let security_headers = http_r.as_ref().ok().map(|http| analyze_security_headers(&http.headers));
 
     report::render_perf_section(
         &http_r, &redirect_r, &dns_r, &tls_r, &rdap_r,
@@ -296,10 +313,6 @@ async fn run_sequential(
     Ok(())
 }
 
-fn should_run(selected: &std::collections::HashSet<cli::SectionName>, section: cli::SectionName) -> bool {
-    selected.is_empty() || selected.contains(&section)
-}
-
 fn spin(msg: &str, no_color: bool) -> indicatif::ProgressBar {
     if is_tty() {
         make_spinner(msg, no_color)
@@ -310,21 +323,11 @@ fn spin(msg: &str, no_color: bool) -> indicatif::ProgressBar {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_streaming(
-    cli: Cli,
-    target: url::Url,
-    host: String,
-    alt_url: Option<url::Url>,
-    is_https: bool,
-    probe_client: reqwest::Client,
-    data_client: reqwest::Client,
-    selected_sections: std::collections::HashSet<cli::SectionName>,
-    max_redirect_hops: usize,
-    doh_url: &str,
-    timeout: u64,
-    animate: bool,
-) -> Result<()> {
+async fn run_streaming(cli: Cli, ctx: ProbeContext) -> Result<()> {
+    let ProbeContext {
+        target, host, alt_url, is_https, probe_client, data_client,
+        selected_sections, max_redirect_hops, doh_url, timeout, animate,
+    } = ctx;
     let no_color = cli.no_color;
     let verbose = cli.verbose;
 
@@ -344,8 +347,8 @@ async fn run_streaming(
                 result
             }
         });
-        report::print_banner_animated(signal);
-        dns_handle.await.expect("DNS task panicked")
+        tokio::task::spawn_blocking(move || report::print_banner_animated(signal)).await.ok();
+        dns_handle.await.map_err(|e| anyhow!("DNS probe failed: {e}"))?
     } else {
         report::print_banner_static();
         let spinner = if is_tty() {
@@ -353,7 +356,7 @@ async fn run_streaming(
         } else {
             None
         };
-        let result = probe_dns(&host, &data_client, doh_url).await;
+        let result = probe_dns(&host, &data_client, &doh_url).await;
         if let Some(sp) = spinner {
             sp.finish_and_clear();
         }
@@ -382,10 +385,12 @@ async fn run_streaming(
         }
     };
     let alt_redirect_fut = async {
-        if let Some(url) = alt_url.clone() {
-            Some((url.clone(), probe_redirect_chain(&probe_client, &url, max_redirect_hops).await))
-        } else {
-            None
+        match alt_url {
+            Some(url) => {
+                let result = probe_redirect_chain(&probe_client, &url, max_redirect_hops).await;
+                Some((url, result))
+            }
+            None => None,
         }
     };
 
@@ -490,7 +495,7 @@ async fn run_streaming(
         &mut tech_rendered, &mut redirects_rendered, &mut whois_rendered,
     );
 
-    let total_elapsed_ms = probe_start.elapsed().as_millis();
+    let total_elapsed_ms = probe_start.elapsed().as_millis() as u64;
 
     // Unwrap results for perf + summary
     let http_r = http_result.unwrap_or_else(|| Err(anyhow!("probe not run")));
@@ -535,52 +540,46 @@ fn render_available_sections(
     whois_rendered: &mut bool,
 ) {
     // HTTP Target section
-    if !*http_rendered {
-        if let Some(result) = http_result {
+    if !*http_rendered
+        && let Some(result) = http_result {
             report::render_http_section(target, host, result, selected_sections, verbose);
             *http_rendered = true;
         }
-    }
 
     // TLS section
-    if !*tls_rendered {
-        if let Some(result) = tls_result {
+    if !*tls_rendered
+        && let Some(result) = tls_result {
             report::render_tls_section(result, selected_sections, verbose);
             *tls_rendered = true;
         }
-    }
 
     // Security headers (depends on HTTP)
-    if !*headers_rendered {
-        if let Some(http_r) = http_result {
+    if !*headers_rendered
+        && let Some(http_r) = http_result {
             let security_headers = http_r.as_ref().ok().map(|http| analyze_security_headers(&http.headers));
             report::render_headers_section(security_headers.as_ref(), selected_sections, verbose);
             *headers_rendered = true;
         }
-    }
 
     // Redirects (render when both redirect and alt are available)
-    if !*redirects_rendered {
-        if let (Some(result), Some(alt_result)) = (redirect_result, alt_redirect_result) {
+    if !*redirects_rendered
+        && let (Some(result), Some(alt_result)) = (redirect_result, alt_redirect_result) {
             report::render_redirects_section(result, alt_result.as_ref(), selected_sections, verbose);
             *redirects_rendered = true;
         }
-    }
 
     // Tech fingerprint (depends on HTTP)
-    if !*tech_rendered {
-        if let Some(http_r) = http_result {
+    if !*tech_rendered
+        && let Some(http_r) = http_result {
             let tech = http_r.as_ref().ok().map(|http| detect_technologies(&http.headers));
             report::render_tech_section(tech.as_ref(), selected_sections, verbose);
             *tech_rendered = true;
         }
-    }
 
     // WHOIS section
-    if !*whois_rendered {
-        if let Some(result) = rdap_result {
+    if !*whois_rendered
+        && let Some(result) = rdap_result {
             report::render_whois_section(result, selected_sections, verbose);
             *whois_rendered = true;
         }
-    }
 }

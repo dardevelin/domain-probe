@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub(crate) struct TechMatch {
-    pub name: String,
-    pub category: String,
+    pub name: &'static str,
+    pub category: &'static str,
     pub icon: &'static str,
 }
 
@@ -12,7 +12,7 @@ pub(crate) struct TechProbe {
 }
 
 pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProbe {
-    let mut technologies = Vec::new();
+    let mut technologies = Vec::with_capacity(4);
 
     let server = headers
         .get("server")
@@ -30,8 +30,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Cloudflare
     if server.contains("cloudflare") || headers.contains_key("cf-ray") {
         technologies.push(TechMatch {
-            name: "Cloudflare".into(),
-            category: "CDN / Security".into(),
+            name: "Cloudflare",
+            category: "CDN / Security",
             icon: "\u{2601}",
         });
     }
@@ -39,8 +39,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Vercel
     if headers.contains_key("x-vercel-id") {
         technologies.push(TechMatch {
-            name: "Vercel".into(),
-            category: "Hosting".into(),
+            name: "Vercel",
+            category: "Hosting",
             icon: "\u{25B2}",
         });
     }
@@ -48,8 +48,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Next.js
     if x_powered_by.contains("next.js") {
         technologies.push(TechMatch {
-            name: "Next.js".into(),
-            category: "Framework".into(),
+            name: "Next.js",
+            category: "Framework",
             icon: "\u{25C8}",
         });
     }
@@ -57,8 +57,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Express / Node.js
     if x_powered_by.contains("express") {
         technologies.push(TechMatch {
-            name: "Express / Node.js".into(),
-            category: "Runtime".into(),
+            name: "Express / Node.js",
+            category: "Runtime",
             icon: "\u{2699}",
         });
     }
@@ -66,8 +66,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // nginx
     if server.contains("nginx") {
         technologies.push(TechMatch {
-            name: "nginx".into(),
-            category: "Web Server".into(),
+            name: "nginx",
+            category: "Web Server",
             icon: "\u{25C9}",
         });
     }
@@ -75,8 +75,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Apache
     if server.contains("apache") {
         technologies.push(TechMatch {
-            name: "Apache".into(),
-            category: "Web Server".into(),
+            name: "Apache",
+            category: "Web Server",
             icon: "\u{25C9}",
         });
     }
@@ -84,8 +84,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // CloudFront
     if headers.contains_key("x-amz-cf-id") {
         technologies.push(TechMatch {
-            name: "CloudFront".into(),
-            category: "CDN".into(),
+            name: "CloudFront",
+            category: "CDN",
             icon: "\u{2601}",
         });
     }
@@ -93,8 +93,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Fastly
     if headers.contains_key("x-fastly-request-id") {
         technologies.push(TechMatch {
-            name: "Fastly".into(),
-            category: "CDN".into(),
+            name: "Fastly",
+            category: "CDN",
             icon: "\u{26A1}",
         });
     }
@@ -102,8 +102,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Shopify
     if headers.contains_key("x-shopify-stage") {
         technologies.push(TechMatch {
-            name: "Shopify".into(),
-            category: "E-Commerce".into(),
+            name: "Shopify",
+            category: "E-Commerce",
             icon: "\u{1F6D2}",
         });
     }
@@ -111,8 +111,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // GitHub Pages
     if headers.contains_key("x-github-request-id") {
         technologies.push(TechMatch {
-            name: "GitHub Pages".into(),
-            category: "Hosting".into(),
+            name: "GitHub Pages",
+            category: "Hosting",
             icon: "\u{2B22}",
         });
     }
@@ -120,8 +120,8 @@ pub(crate) fn detect_technologies(headers: &HashMap<String, String>) -> TechProb
     // Varnish
     if via.contains("varnish") {
         technologies.push(TechMatch {
-            name: "Varnish".into(),
-            category: "Cache".into(),
+            name: "Varnish",
+            category: "Cache",
             icon: "\u{26A1}",
         });
     }

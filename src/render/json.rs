@@ -13,6 +13,7 @@ use crate::probe::tech::TechProbe;
 use crate::probe::tls::TlsProbe;
 use crate::render::report::http_version;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_json(
     target: &Url,
     host: &str,
@@ -24,7 +25,7 @@ pub(crate) fn render_json(
     tls_result: &Result<TlsProbe>,
     security_headers: Option<&SecurityHeadersProbe>,
     tech_result: Option<&TechProbe>,
-    total_elapsed_ms: u128,
+    total_elapsed_ms: u64,
 ) {
     let http_json = match http_result {
         Ok(http) => json!({
@@ -182,7 +183,13 @@ pub(crate) fn render_json(
     });
 
     match serde_json::to_string_pretty(&out) {
-        Ok(text) => println!("{text}"),
-        Err(err) => println!("{}", json!({ "error": err.to_string() })),
+        Ok(text) => {
+            use std::io::Write;
+            let _ = writeln!(std::io::stdout(), "{text}");
+        }
+        Err(err) => {
+            use std::io::Write;
+            let _ = writeln!(std::io::stdout(), "{}", json!({ "error": err.to_string() }));
+        }
     }
 }
