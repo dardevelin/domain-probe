@@ -1,5 +1,5 @@
 Package: domain-probe
-Version: 0.1.0
+Version: 0.1.1
 Architecture: amd64
 Maintainer: Darcy Luis Neves Bras da Silva <stardevelin@gmail.com>
 Description: Fast, thorough domain intelligence from the terminal
