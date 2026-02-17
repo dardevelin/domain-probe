@@ -1,0 +1,8 @@
+Package: domain-probe
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Darcy Luis Neves Bras da Silva <stardevelin@gmail.com>
+Description: Fast, thorough domain intelligence from the terminal
+ domain-probe runs parallel probes against a URL or hostname and returns
+ a structured report covering DNS, TLS, HTTP, security headers, redirects,
+ RDAP/WHOIS, technology fingerprinting, and an overall health grade.
