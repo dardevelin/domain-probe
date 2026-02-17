@@ -11,7 +11,7 @@ class DomainProbe < Formula
     end
     on_intel do
       url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.0/domain-probe-0.1.0-x86_64-apple-darwin.tar.gz"
-      sha256 "PLACEHOLDER"
+      sha256 "c5ab2872e934bf75d4c483082b5d6faf24cc5b0c684aaa0ffacded742814fd94"
     end
   end
 
