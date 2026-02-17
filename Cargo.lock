@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "domain-probe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "domain-probe-logo"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crossterm",
  "is-terminal",
