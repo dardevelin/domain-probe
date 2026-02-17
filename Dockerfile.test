@@ -1,0 +1,28 @@
+ARG DISTRO=ubuntu
+
+# ── Arch Linux ──────────────────────────────────────────────────
+FROM archlinux:latest AS base-archlinux
+RUN pacman -Syu --noconfirm rustup gcc
+RUN rustup default stable
+
+# ── Debian ──────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS base-debian
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential ca-certificates && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ── Ubuntu ──────────────────────────────────────────────────────
+FROM ubuntu:24.04 AS base-ubuntu
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential ca-certificates && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ── Build + test stage ──────────────────────────────────────────
+FROM base-${DISTRO} AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --release 2>&1
+RUN ./target/release/domain-probe --help
+RUN ./target/release/domain-probe -j stripe.com

@@ -62,6 +62,7 @@ async fn run() -> Result<()> {
     let max_redirect_hops = cfg.network.max_redirect_hops;
     let user_agent = cfg.network.user_agent.clone();
     let doh_url = cfg.dns.doh_url.clone();
+    let animate = cfg.animation.enabled;
 
     let probe_client = build_probe_client(timeout, &user_agent)?;
     let data_client = build_data_client(timeout, &user_agent)?;
@@ -73,11 +74,11 @@ async fn run() -> Result<()> {
 
     // Sequential mode: run probes one at a time
     if cli.sequential {
-        return run_sequential(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout).await;
+        return run_sequential(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout, animate).await;
     }
 
     // Interactive/streaming mode: render sections as probes complete
-    run_streaming(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout).await
+    run_streaming(cli, target, host, alt_url, is_https, probe_client, data_client, selected_sections, max_redirect_hops, &doh_url, timeout, animate).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -170,6 +171,7 @@ async fn run_sequential(
     max_redirect_hops: usize,
     doh_url: &str,
     timeout: u64,
+    animate: bool,
 ) -> Result<()> {
     let no_color = cli.no_color;
     let verbose = cli.verbose;
@@ -178,7 +180,7 @@ async fn run_sequential(
 
     // 1. DNS — run concurrently with the logo animation
     let dns_result = if should_run(&selected_sections, cli::SectionName::Dns) {
-        if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+        if animate && is_tty() && domain_probe_logo::detect::supports_truecolor() {
             // Spin the logo while DNS resolves; fire signal when done
             let signal = domain_probe_logo::timeline::Signal::new();
             let signal_clone = signal.clone();
@@ -205,7 +207,7 @@ async fn run_sequential(
             Some(result)
         }
     } else {
-        if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+        if animate && is_tty() && domain_probe_logo::detect::supports_truecolor() {
             let signal = domain_probe_logo::timeline::Signal::new();
             signal.fire();
             report::print_banner_animated(signal);
@@ -321,6 +323,7 @@ async fn run_streaming(
     max_redirect_hops: usize,
     doh_url: &str,
     timeout: u64,
+    animate: bool,
 ) -> Result<()> {
     let no_color = cli.no_color;
     let verbose = cli.verbose;
@@ -328,7 +331,7 @@ async fn run_streaming(
     let probe_start = Instant::now();
 
     // Phase 1: DNS resolution — animate logo while DNS resolves
-    let dns_result = if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+    let dns_result = if animate && is_tty() && domain_probe_logo::detect::supports_truecolor() {
         let signal = domain_probe_logo::timeline::Signal::new();
         let signal_clone = signal.clone();
         let dns_handle = tokio::spawn({

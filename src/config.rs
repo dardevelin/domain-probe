@@ -6,6 +6,7 @@ pub(crate) struct Config {
     pub colors: ColorConfig,
     pub dns: DnsConfig,
     pub network: NetworkConfig,
+    pub animation: AnimationConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +74,18 @@ impl Default for NetworkConfig {
             max_redirect_hops: 10,
             user_agent: "domain-probe/0.1".into(),
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub(crate) struct AnimationConfig {
+    pub enabled: bool,
+}
+
+impl Default for AnimationConfig {
+    fn default() -> Self {
+        Self { enabled: true }
     }
 }
 
