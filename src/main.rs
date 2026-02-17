@@ -174,17 +174,44 @@ async fn run_sequential(
     let no_color = cli.no_color;
     let verbose = cli.verbose;
 
-    report::print_banner();
     let probe_start = Instant::now();
 
-    // 1. DNS
+    // 1. DNS — run concurrently with the logo animation
     let dns_result = if should_run(&selected_sections, cli::SectionName::Dns) {
-        let sp = spin(&format!("DNS: resolving {}...", &host), no_color);
-        let result = probe_dns(&host, &data_client, doh_url).await;
-        sp.finish_and_clear();
-        report::render_dns_section(&result, None, &selected_sections, verbose);
-        Some(result)
+        if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+            // Spin the logo while DNS resolves; fire signal when done
+            let signal = domain_probe_logo::timeline::Signal::new();
+            let signal_clone = signal.clone();
+            let dns_handle = tokio::spawn({
+                let host = host.clone();
+                let data_client = data_client.clone();
+                let doh_url = doh_url.to_string();
+                async move {
+                    let result = probe_dns(&host, &data_client, &doh_url).await;
+                    signal_clone.fire();
+                    result
+                }
+            });
+            report::print_banner_animated(signal);
+            let result = dns_handle.await.expect("DNS task panicked");
+            report::render_dns_section(&result, None, &selected_sections, verbose);
+            Some(result)
+        } else {
+            report::print_banner_static();
+            let sp = spin(&format!("DNS: resolving {}...", &host), no_color);
+            let result = probe_dns(&host, &data_client, doh_url).await;
+            sp.finish_and_clear();
+            report::render_dns_section(&result, None, &selected_sections, verbose);
+            Some(result)
+        }
     } else {
+        if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+            let signal = domain_probe_logo::timeline::Signal::new();
+            signal.fire();
+            report::print_banner_animated(signal);
+        } else {
+            report::print_banner_static();
+        }
         None
     };
 
@@ -298,22 +325,37 @@ async fn run_streaming(
     let no_color = cli.no_color;
     let verbose = cli.verbose;
 
-    // Print banner immediately
-    report::print_banner();
-
-    // Phase 1: DNS resolution with spinner
-    let spinner = if is_tty() {
-        Some(make_spinner(&format!("DNS: resolving {}...", &host), no_color))
-    } else {
-        None
-    };
-
     let probe_start = Instant::now();
-    let dns_result = probe_dns(&host, &data_client, doh_url).await;
 
-    if let Some(ref sp) = spinner {
-        sp.finish_and_clear();
-    }
+    // Phase 1: DNS resolution — animate logo while DNS resolves
+    let dns_result = if is_tty() && domain_probe_logo::detect::supports_truecolor() {
+        let signal = domain_probe_logo::timeline::Signal::new();
+        let signal_clone = signal.clone();
+        let dns_handle = tokio::spawn({
+            let host = host.clone();
+            let data_client = data_client.clone();
+            let doh_url = doh_url.to_string();
+            async move {
+                let result = probe_dns(&host, &data_client, &doh_url).await;
+                signal_clone.fire();
+                result
+            }
+        });
+        report::print_banner_animated(signal);
+        dns_handle.await.expect("DNS task panicked")
+    } else {
+        report::print_banner_static();
+        let spinner = if is_tty() {
+            Some(make_spinner(&format!("DNS: resolving {}...", &host), no_color))
+        } else {
+            None
+        };
+        let result = probe_dns(&host, &data_client, doh_url).await;
+        if let Some(sp) = spinner {
+            sp.finish_and_clear();
+        }
+        result
+    };
 
     // Render DNS section immediately
     report::render_dns_section(&dns_result, None, &selected_sections, verbose);

@@ -18,13 +18,25 @@ use reqwest::{StatusCode, Version};
 
 // ── Banner ──────────────────────────────────────────────────────
 
-pub(crate) fn print_banner() {
+/// Animated banner: spin until signal fires → hold → unfold into separator.
+/// The signal is fired from async code when the first probe completes,
+/// so the animation fills exactly the wait time.
+pub(crate) fn print_banner_animated(signal: domain_probe_logo::timeline::Signal) {
+    use domain_probe_logo::{logo, timeline::Timeline};
+    use std::time::Duration;
+
     println!();
-    println!(
-        "  {} {}",
-        c_bold_bright("domain-probe"),
-        c_muted(format!("v{}", env!("CARGO_PKG_VERSION")))
-    );
+    Timeline::new(logo::ROWS)
+        .spin_until(signal)
+        .hold(Duration::from_millis(300))
+        .unfold(Duration::from_millis(600))
+        .run();
+}
+
+/// Static banner: print the logo once (truecolor or ASCII).
+pub(crate) fn print_banner_static() {
+    println!();
+    domain_probe_logo::logo::print();
     let tw = terminal_width().min(72);
     let rule = "\u{2500}".repeat(tw.saturating_sub(2));
     println!("  {}", c_dim(rule));

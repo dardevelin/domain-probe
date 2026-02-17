@@ -1,0 +1,9 @@
+[package]
+name = "domain-probe-logo"
+version = "0.1.0"
+edition = "2024"
+description = "Terminal logo animation for domain-probe — spin, unfold, and separator transitions"
+
+[dependencies]
+is-terminal = "0.4"
+crossterm = "0.28"

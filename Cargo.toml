@@ -1,9 +1,13 @@
+[workspace]
+members = [".", "crates/domain-probe-logo"]
+
 [package]
 name = "domain-probe"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+domain-probe-logo = { path = "crates/domain-probe-logo" }
 anyhow = "1"
 dirs = "6"
 chrono = { version = "0.4", features = ["clock"] }
