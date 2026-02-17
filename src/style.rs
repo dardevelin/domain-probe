@@ -1,11 +1,48 @@
+use crate::config::{ColorConfig, parse_hex_color};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 static USE_COLOR: AtomicBool = AtomicBool::new(true);
 static IS_TTY: AtomicBool = AtomicBool::new(true);
+static PALETTE: OnceLock<[(u8, u8, u8); 12]> = OnceLock::new();
+
+/// Initialize the color palette from config. Call once at startup.
+pub(crate) fn init_colors(config: &ColorConfig) {
+    let defaults = ColorConfig::default();
+    let parse_or = |hex: &str, fallback: &str| -> (u8, u8, u8) {
+        parse_hex_color(hex).unwrap_or_else(|| parse_hex_color(fallback).unwrap())
+    };
+    let palette = [
+        parse_or(&config.green, &defaults.green),     // 0
+        parse_or(&config.cyan, &defaults.cyan),        // 1
+        parse_or(&config.yellow, &defaults.yellow),    // 2
+        parse_or(&config.red, &defaults.red),          // 3
+        parse_or(&config.purple, &defaults.purple),    // 4
+        parse_or(&config.orange, &defaults.orange),    // 5
+        parse_or(&config.pink, &defaults.pink),        // 6
+        parse_or(&config.teal, &defaults.teal),        // 7
+        parse_or(&config.fg, &defaults.fg),            // 8
+        parse_or(&config.muted, &defaults.muted),      // 9
+        parse_or(&config.dim, &defaults.dim),          // 10
+        parse_or(&config.bright, &defaults.bright),    // 11
+    ];
+    let _ = PALETTE.set(palette);
+}
+
+fn pal(index: usize) -> (u8, u8, u8) {
+    PALETTE.get().map(|p| p[index]).unwrap_or_else(|| {
+        // Hardcoded defaults if init_colors was never called
+        [
+            (134, 239, 172), (125, 211, 252), (253, 230, 138), (252, 165, 165),
+            (196, 181, 253), (253, 186, 116), (249, 168, 212), (94, 234, 212),
+            (200, 200, 224), (107, 107, 141), (68, 68, 102), (238, 238, 245),
+        ][index]
+    })
+}
 
 pub(crate) fn set_use_color(enabled: bool) {
     USE_COLOR.store(enabled, Ordering::Relaxed);
@@ -32,98 +69,121 @@ where
     if use_color() { style(text) } else { text }
 }
 
-// Truecolor palette from design system
+// Truecolor palette from design system (configurable via config file)
 pub(crate) fn c_green<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(134, 239, 172).to_string())
+    let c = pal(0);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_cyan<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(125, 211, 252).to_string())
+    let c = pal(1);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_yellow<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(253, 230, 138).to_string())
+    let c = pal(2);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_red<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(252, 165, 165).to_string())
+    let c = pal(3);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_purple<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(196, 181, 253).to_string())
+    let c = pal(4);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_orange<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(253, 186, 116).to_string())
+    let c = pal(5);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_pink<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(249, 168, 212).to_string())
+    let c = pal(6);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_teal<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(94, 234, 212).to_string())
+    let c = pal(7);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_fg<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(200, 200, 224).to_string())
+    let c = pal(8);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_muted<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(107, 107, 141).to_string())
+    let c = pal(9);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_dim<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(68, 68, 102).to_string())
+    let c = pal(10);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bright<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.truecolor(238, 238, 245).to_string())
+    let c = pal(11);
+    style_if_enabled(value, |s| s.truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_green<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(134, 239, 172).to_string())
+    let c = pal(0);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_yellow<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(253, 230, 138).to_string())
+    let c = pal(2);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_red<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(252, 165, 165).to_string())
+    let c = pal(3);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_bright<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(238, 238, 245).to_string())
+    let c = pal(11);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_cyan<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(125, 211, 252).to_string())
+    let c = pal(1);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_purple<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(196, 181, 253).to_string())
+    let c = pal(4);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn c_bold_orange<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(253, 186, 116).to_string())
+    let c = pal(5);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 // Badge functions: colored text (terminal can't do bg blocks reliably, use bold colored text)
 pub(crate) fn badge_pass<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(134, 239, 172).to_string())
+    let c = pal(0);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn badge_warn<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(253, 230, 138).to_string())
+    let c = pal(2);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn badge_fail<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(252, 165, 165).to_string())
+    let c = pal(3);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 pub(crate) fn badge_info<T: std::fmt::Display>(value: T) -> String {
-    style_if_enabled(value, |s| s.bold().truecolor(125, 211, 252).to_string())
+    let c = pal(1);
+    style_if_enabled(value, |s| s.bold().truecolor(c.0, c.1, c.2).to_string())
 }
 
 // Score bar per design system: █ filled, ░ empty, 10 chars
@@ -144,16 +204,17 @@ pub(crate) fn score_bar(score: u32, max: u32) -> String {
     let score_text = format!("{}/{}", score, max);
     if use_color() {
         let color = if filled >= 8 {
-            (134, 239, 172) // green
+            pal(0) // green
         } else if filled >= 5 {
-            (253, 230, 138) // yellow
+            pal(2) // yellow
         } else {
-            (252, 165, 165) // red
+            pal(3) // red
         };
+        let dim = pal(10);
         format!(
             "{} {}",
             bar.truecolor(color.0, color.1, color.2),
-            score_text.truecolor(68, 68, 102)
+            score_text.truecolor(dim.0, dim.1, dim.2)
         )
     } else {
         format!("{} {}", bar, score_text)
@@ -224,4 +285,41 @@ pub(crate) fn terminal_width() -> usize {
     terminal_size::terminal_size()
         .map(|(w, _)| w.0 as usize)
         .unwrap_or(80)
+}
+
+/// Count visible characters, skipping ANSI escape sequences (`\x1b[...m`).
+pub(crate) fn visible_len(s: &str) -> usize {
+    let mut len = 0usize;
+    let mut in_escape = false;
+    for ch in s.chars() {
+        if in_escape {
+            if ch == 'm' {
+                in_escape = false;
+            }
+        } else if ch == '\x1b' {
+            in_escape = true;
+        } else {
+            len += 1;
+        }
+    }
+    len
+}
+
+/// Pad a string containing ANSI codes to a target *visible* width.
+/// `align`: `'<'` left, `'^'` center, `'>'` right.
+pub(crate) fn pad_visible(s: &str, target_width: usize, align: char) -> String {
+    let vis = visible_len(s);
+    if vis >= target_width {
+        return s.to_string();
+    }
+    let pad = target_width - vis;
+    match align {
+        '>' => format!("{}{}", " ".repeat(pad), s),
+        '^' => {
+            let left = pad / 2;
+            let right = pad - left;
+            format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
+        }
+        _ => format!("{}{}", s, " ".repeat(pad)),
+    }
 }

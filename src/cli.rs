@@ -27,6 +27,9 @@ pub(crate) struct Cli {
     /// Request timeout in seconds
     #[arg(long, default_value_t = 10)]
     pub timeout: u64,
+    /// Run probes sequentially (one at a time)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub sequential: bool,
     /// Show more details in report output
     #[arg(short = 'v', long, action = ArgAction::SetTrue)]
     pub verbose: bool,
