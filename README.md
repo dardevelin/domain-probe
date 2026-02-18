@@ -23,6 +23,10 @@
 
 **domain-probe** runs parallel probes against a URL or hostname and returns a structured report covering DNS records, TLS certificates, HTTP metadata, security headers, redirect chains, RDAP/WHOIS registration, technology fingerprinting, performance timings, and an overall health grade — all in one command.
 
+<p align="center">
+  <img alt="domain-probe output for amazon.com" src="assets/screenshot.png" width="800">
+</p>
+
 ## Install
 
 ### Homebrew (macOS / Linux)
