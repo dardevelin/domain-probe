@@ -1,28 +1,28 @@
 class DomainProbe < Formula
   desc "Fast, thorough domain intelligence from the terminal"
   homepage "https://github.com/dardevelin/domain-probe"
-  version "0.1.1"
+  version "0.1.2"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe-0.1.1-aarch64-apple-darwin.tar.gz"
-      sha256 "b5b2e9b233e838c20d1dc483c3bf47d263b7f9f6f232900223493ff80d4b0755"
+      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe-0.1.2-aarch64-apple-darwin.tar.gz"
+      sha256 "e403a900521ad98e27b49523f832333349d89a1dca8ba91dce36ecaf44ebb9e9"
     end
     on_intel do
-      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe-0.1.1-x86_64-apple-darwin.tar.gz"
-      sha256 "d6b8a50444f7be2dc6ec45ce18aff09d00ad0d2957e975b0fb6c58fecf592094"
+      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe-0.1.2-x86_64-apple-darwin.tar.gz"
+      sha256 "d2435ad3e987965a57ca303978ee151aada22cc9dc6d09e676161b4e5741d1fb"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe-0.1.1-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "566ce842d96fbf3190d7204b7465fbcbfbc4fec1b317cb9512eb46730194ecda"
+      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe-0.1.2-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "888d55b7ddf02221da455a4a42cc664bd741ac598fa71baa80e0afc8b3ca92d5"
     end
     on_intel do
-      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe-0.1.1-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "004257e18f3b6123d0e515a1214ddc5582885a320ff6dfa04191021f6c8fdca7"
+      url "https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe-0.1.2-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "e3b6f310934cfbb0d8ae81af3d97ea627831c7cdc9bbc114a74c5c00be292a85"
     end
   end
 
