@@ -41,30 +41,30 @@ Download the latest tarball from [GitHub Releases](https://github.com/dardevelin
 
 ```bash
 # macOS (Apple Silicon)
-tar xzf domain-probe-0.1.1-aarch64-apple-darwin.tar.gz
+tar xzf domain-probe-0.1.2-aarch64-apple-darwin.tar.gz
 sudo mv domain-probe /usr/local/bin/
 
 # Linux x86_64
-tar xzf domain-probe-0.1.1-x86_64-unknown-linux-gnu.tar.gz
+tar xzf domain-probe-0.1.2-x86_64-unknown-linux-gnu.tar.gz
 sudo mv domain-probe /usr/local/bin/
 
 # Linux ARM64
-tar xzf domain-probe-0.1.1-aarch64-unknown-linux-gnu.tar.gz
+tar xzf domain-probe-0.1.2-aarch64-unknown-linux-gnu.tar.gz
 sudo mv domain-probe /usr/local/bin/
 ```
 
 ### Debian / Ubuntu
 
 ```bash
-curl -LO https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe_0.1.1_amd64.deb
-sudo dpkg -i domain-probe_0.1.1_amd64.deb
+curl -LO https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe_0.1.2_amd64.deb
+sudo dpkg -i domain-probe_0.1.2_amd64.deb
 ```
 
 ### Arch Linux
 
 ```bash
-curl -LO https://github.com/dardevelin/domain-probe/releases/download/v0.1.1/domain-probe-0.1.1-1-x86_64.pkg.tar.zst
-sudo pacman -U domain-probe-0.1.1-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/dardevelin/domain-probe/releases/download/v0.1.2/domain-probe-0.1.2-1-x86_64.pkg.tar.zst
+sudo pacman -U domain-probe-0.1.2-1-x86_64.pkg.tar.zst
 ```
 
 ### From source
